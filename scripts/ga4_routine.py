@@ -14,9 +14,11 @@ Examples (the routine picks args from the user's prompt):
     python scripts/ga4_routine.py --days 7
     python scripts/ga4_routine.py --days 90 --limit 50
 
-Env:
+Env (key resolved in this order):
     GA4_PROPERTY_ID        (required) numeric GA4 property id
-    GA4_SA_JSON_CONTENT    full service-account JSON as a single string (cloud)
+    GA4_SA_JSON_B64        base64 of the service-account JSON (preferred for KEY=value
+                           cloud env UIs - single line, no quotes/newlines)
+    GA4_SA_JSON_CONTENT    full service-account JSON as a single string
     GA4_SA_JSON            path to a service-account JSON file (local fallback)
 """
 from __future__ import annotations
@@ -47,6 +49,15 @@ def die(msg: str) -> None:
 
 
 def credentials():
+    # Preferred for cloud KEY=value env UIs: base64 of the JSON (single line, no quotes).
+    b64 = os.getenv("GA4_SA_JSON_B64", "").strip()
+    if b64:
+        import base64
+        try:
+            info = json.loads(base64.b64decode(b64))
+        except Exception as e:
+            die(f"GA4_SA_JSON_B64 could not be decoded: {e}")
+        return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     inline = os.getenv("GA4_SA_JSON_CONTENT", "").strip()
     if inline:
         try:
