@@ -1,0 +1,15 @@
+# Secrets — never commit
+secrets/
+.env
+*.json
+google-ads.yaml
+!requirements.txt
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Output data
+output/

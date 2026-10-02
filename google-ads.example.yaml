@@ -1,0 +1,9 @@
+# Copy to secrets/google-ads.yaml and fill in. secrets/ and google-ads.yaml are git-ignored.
+developer_token: "YOUR_DEVELOPER_TOKEN"
+client_id: "XXXX.apps.googleusercontent.com"
+client_secret: "YOUR_CLIENT_SECRET"
+refresh_token: "FROM_google_ads_auth.py"
+# MCC / manager account id (digits only, no dashes). If you query the account directly
+# and it is not under a manager, set this to the same value as GADS_CUSTOMER_ID.
+login_customer_id: "1234567890"
+use_proto_plus: True

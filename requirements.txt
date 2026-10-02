@@ -1,0 +1,12 @@
+# Core
+requests>=2.31
+python-dotenv>=1.0
+pandas>=2.2
+
+# GA4 (Google Analytics Data API)
+google-analytics-data>=0.18
+google-auth>=2.30
+
+# Google Ads API
+google-ads>=25.0
+google-auth-oauthlib>=1.2
