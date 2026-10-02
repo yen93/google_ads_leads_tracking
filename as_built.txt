@@ -1,0 +1,73 @@
+================================================================================
+AS-BUILT — google_ads_leads_tracking
+Last updated: 2026-10-02
+================================================================================
+
+PURPOSE
+Answer "which leads/deals come from Google Ads" from data, and power the
+self-service "MAG GA4 Agent" tab on the MAG dashboard. GA4 gives aggregate
+Google Ads volume; per-deal attribution would require a gclid captured into
+ActiveCampaign (none exists today).
+
+SCRIPTS (this repo)
+- scripts/ga4_routine.py — cloud-friendly GA4 pull. Reads the service-account key
+  from env var GA4_SA_JSON_B64 (base64) or GA4_SA_JSON_CONTENT (raw JSON) or
+  GA4_SA_JSON (file path). Args: --days, --google-ads-only, --limit. Prints a
+  markdown table (source/medium/campaign × sessions/conversions/users). This is
+  the script the cloud routine runs.
+  Requires: GA4_PROPERTY_ID + one of the key vars (in the routine's cloud env;
+  locally in .env).
+- scripts/ga4_pull.py — local GA4 report (reads key file GA4_SA_JSON); writes
+  output/ga4_source_medium_{30,90}d.csv. Requires: GA4_PROPERTY_ID, GA4_SA_JSON.
+- scripts/ac_check_lead_source.py — one-off audit: pulls all AC deals + the
+  Lead-Machine source / lead-source fields, reports whether Google Ads is
+  identifiable per deal (verdict 2026-10-02: no). Requires: AC_API_URL,
+  AC_API_TOKEN. Writes output/ac_lead_source_*.csv.
+- scripts/google_ads_auth.py — one-time OAuth to mint a Google Ads API refresh
+  token. Requires: a Desktop OAuth client JSON (secrets/oauth_client.json).
+- scripts/google_ads_pull.py — Google Ads campaign + gclid pull (not yet used;
+  needs a developer token). Requires: secrets/google-ads.yaml, GADS_CUSTOMER_ID.
+
+EXTERNAL INTEGRATIONS
+- Google Analytics 4 Data API — read via a Google Cloud service account
+  (project claudegwscli-502400, SA insta-drive-uploader@claudegwscli-502400.iam.gserviceaccount.com,
+  Viewer on GA4 property 363754280). Key file lives in the repo root
+  (service_account_json_key_*.json) and is GITIGNORED; base64 of it is set as an
+  env var on the routine's cloud environment.
+- ActiveCampaign — REST API v3 at https://myadventuregroup.api-us1.com (account
+  2116665). Token in .env (AC_API_TOKEN), gitignored. Read-only use here.
+- Google Ads API — scaffolded only; needs a developer token (pending).
+- Supabase (project aivitcomiywiysrfwqxt, "MAGTestProject") — the hand-off store
+  for the GA4 Agent (see DATA STORES). Accessed by the routine via Supabase MCP
+  execute_sql; by the dashboard via its SUPABASE_DB_URL (pg).
+
+DATA STORES
+- public.ga4_agent_requests (Supabase MAGTestProject) — one row per GA4 Agent
+  question: id, prompt, status (pending|processing|done|error), result (markdown),
+  error, requested_by, created_at, updated_at. Migration mirrored at
+  (dashboard repo) supabase/migrations/20261002010000_create_ga4_agent_requests.sql.
+
+AUTOMATIONS / ROUTINES
+- "GA4 On-Demand Report" Claude cloud routine (trigger id
+  trig_01DFkHgvzKJUDCNcHwM87gyS, owner Yen; cloud env env_01DYHNjMesGeuq9ABo7W6m6f;
+  clones github.com/yen93/google_ads_leads_tracking). On fire: claims the oldest
+  pending public.ga4_agent_requests row, runs scripts/ga4_routine.py per the
+  prompt, writes the markdown result back and marks it done. Triggered on demand
+  via its /fire endpoint (NOT on a schedule). allowed_tools include
+  mcp__Supabase__execute_sql. The fire URL + token are in a gitignored local file
+  "GA4 On-Demand Report routine API Key and URL.txt" and are also set as Cloud Run
+  env vars on the dashboard service. IMPORTANT: edit this routine only via the
+  RemoteTrigger API — saving it in the claude.ai UI reverts the worker prompt.
+
+RELATED (lives in the sibling dashboard repo C:/Users/Cloverly/claude_code/dashboard)
+- "MAG GA4 Agent" tab: public/ga4_agent.html + server/ga4Agent.js (routes
+  /api/ga4-agent/run and /result) + config.js ga4Agent{fireUrl,fireToken}.
+  Deployed to Cloud Run service "dashboard" (project claudegwscli-502400, region
+  australia-southeast1). Env vars GA4_ROUTINE_FIRE_URL + GA4_ROUTINE_FIRE_TOKEN
+  (secret) added alongside the existing dashboard vars.
+
+OTHER
+- mag-ga4-agent-guide.html (+ ga4-agent-architecture.png, ga4-agent-usage.png) —
+  self-contained iMAG-themed end-user guide for the GA4 Agent.
+- .venv/ — local Python 3.14 virtualenv. requirements.txt pins the GA4/Ads libs.
+================================================================================

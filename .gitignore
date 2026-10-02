@@ -4,6 +4,9 @@ secrets/
 *.json
 google-ads.yaml
 !requirements.txt
+# Live routine fire token / URL
+*routine*API*Key*.txt
+*API*Key*URL*.txt
 
 # Python
 venv/
