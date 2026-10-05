@@ -7,6 +7,9 @@ google-ads.yaml
 # Live routine fire token / URL
 *routine*API*Key*.txt
 *API*Key*URL*.txt
+# Calendly personal access token
+calendly_personal_access_token.txt
+*token*.txt
 
 # Python
 venv/

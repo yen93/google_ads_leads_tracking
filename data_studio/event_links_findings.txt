@@ -1,0 +1,97 @@
+GA4 CONVERSION-EVENT LINK FINDINGS
+==================================
+Date: 2026-10-05
+GA4 property: 363754280 (myadventuregroup.com.au)
+Window analysed: last 90 days
+Source dashboard: data_studio MAG dashboard, "Breakdown of Conversions" (Total T1 Enquiries = 27)
+
+OBJECTIVE
+---------
+Figure out "the links" of the conversion events: click_to_call, email_link_clicks,
+Form_submission_thankyou_1.
+
+HEADLINE
+--------
+These are GA4 CUSTOM KEY EVENTS, not Google Ads conversion actions with a single
+destination link. Only ONE of the three has a recoverable link in GA4 as currently
+configured.
+
+  Event                         | What triggers it                  | Recoverable link?
+  ------------------------------|-----------------------------------|------------------
+  Form_submission_thankyou_1    | Page view of enquiry thank-you    | YES
+  click_to_call                 | Click on a tel: link              | NO (not captured)
+  email_link_clicks             | Click on a mailto: link           | NO (not captured)
+
+
+1. Form_submission_thankyou_1  --  HAS A CLEAR LINK
+---------------------------------------------------
+Page-view conversion. Fires on the enquiry thank-you page:
+    https://www.myadventuregroup.com.au/thank-you/   (and the non-www variant)
+
+pageLocation breakdown (eventCount):
+     2  https://myadventuregroup.com.au/thank-you/
+     2  https://www.myadventuregroup.com.au/thank-you/
+     1  https://myadventuregroup.com.au/thank-you/?vgo_ee=...
+     1  https://www.myadventuregroup.com.au/thank-you/?vgo_ee=...
+pagePath: /thank-you/ (6)
+
+NOTE: calendly_form_submit uses a DIFFERENT thank-you page -- /thank-you-2/ -- which
+is how the two form conversions are distinguished.
+    calendly_form_submit pagePath: /thank-you-2/ (35)
+
+
+2. click_to_call  --  NO LINK STORED
+------------------------------------
+Click event on a tel: link. Every field that could hold the target comes back empty:
+    linkUrl       = '' (17)
+    linkText      = '' (17)
+    linkDomain    = '' (17)
+    event_label   = (not set) (17)
+    event_category= (not set) (17)
+
+It's a GTM custom event that fires on a tel: click WITHOUT passing the clicked URL
+into GA4, so the actual phone number is NOT retrievable from GA4 as set up today.
+
+Only locating info available = which pages it fires on (pagePath, eventCount):
+     8  /contact/
+     3  /
+     2  /free-consult/
+     2  /team-building-with-james-castrission/
+     1  /terms-and-conditions/
+     1  /workshops/
+
+
+3. email_link_clicks  --  NO LINK STORED
+----------------------------------------
+Click event on a mailto: link. Same as click_to_call -- all link fields empty:
+    linkUrl       = '' (5)
+    linkText      = '' (5)
+    linkDomain    = '' (5)
+    event_label   = (not set) (5)
+    event_category= (not set) (5)
+
+The actual email address is NOT retrievable from GA4 as set up today.
+
+Pages it fires on (pagePath, eventCount):
+     3  /
+     1  /free-consult/
+     1  /interactive-learning/
+
+
+HOW TO ACTUALLY CAPTURE THE LINKS GOING FORWARD
+-----------------------------------------------
+In GTM, add link_url (and link_text) as event parameters on the click_to_call and
+email_link_clicks tags, and register them as custom dimensions in GA4. After that,
+the tel: number and mailto: address will appear in the same query used here.
+
+
+METHOD / HOW TO RE-RUN
+----------------------
+Queried the GA4 Data API (BetaAnalyticsDataClient) with:
+  - dimension filter eventName = <event>
+  - dimensions: eventName x {linkUrl, pageLocation, pagePath, linkText, linkDomain,
+    customEvent:event_label, customEvent:event_category}
+  - metric: eventCount
+  - date range: 90daysAgo..today
+Auth: service account service_account_json_key_claudegwscli-502400-3a7969b176ed.json
+(Viewer on GA4), same pattern as scripts/ga4_pull.py.

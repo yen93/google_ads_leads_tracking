@@ -25,6 +25,21 @@ copy .env.example .env   # then edit .env
 | `scripts/ga4_pull.py` | **Step 2.** Direct GA4 pull by source/medium/campaign; isolates google/cpc. | `GA4_PROPERTY_ID`, service-account key |
 | `scripts/google_ads_auth.py` | **Step 3a.** One-time OAuth to mint a refresh token. | Desktop OAuth client JSON |
 | `scripts/google_ads_pull.py` | **Step 3b.** Direct Google Ads pull: campaigns + gclid extract. | `secrets/google-ads.yaml`, `GADS_CUSTOMER_ID` |
+| `scripts/map_ga4_ac.py` | **Lead mapping.** Matches GA4 form events (by time) + Calendly bookings (by email/UTM) to AC contacts and writes `public.ga4_ac_contact_source` + `ga4_ac_event_matches` in Supabase. | `GA4_*`, `CALENDLY_API_TOKEN[_FILE]`, `SUPABASE_DB_URL` |
+
+### Lead mapping — how it works & its limits
+`map_ga4_ac.py` answers "what channel did each lead come from?" two ways:
+- **Calendly → AC by email** (reliable): invitee email joins to the AC contact; source is the
+  booking's real `utm_*` when present.
+- **GA4 form events → AC by timestamp** (probabilistic): GA4's finest grain is the *minute* and
+  it returns per-minute event *counts by source*, not identified events — so each AC contact
+  inherits the source of the GA4 form event(s) in its creation-minute window. Every GA4 match
+  carries a **confidence** (`high` ≤90s & unambiguous · `medium` · `low` when multiple sources
+  share the minute). Bulk-import bursts (>2 contacts/minute) are excluded. AC `cdate` is UTC;
+  GA4 minutes (property tz Australia/Sydney) are converted to UTC before joining.
+
+The durable fix for exact per-lead attribution is still to capture `gclid`/`utm` on web forms
+into AC going forward; this mapping is best-effort for data already collected.
 
 ## Credentials needed (you have full admin)
 - **ActiveCampaign:** Settings → Developer → API Access → key → `.env` `AC_API_TOKEN`.

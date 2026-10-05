@@ -1,0 +1,5 @@
+mag_dashboard=https://dashboard-659687081407.australia-southeast1.run.app
+
+## task:
+1. build a tab in our mag_dashboard called "AC Contact Sources" just display the supabase table ga4_ac_contact_source. sorting and filtering should be the same as the "Buyer Sheet" tab. and in addition to the default filtering and sorting, we should be able to filter by start and end date (date range filter). and on top of the table should be major metrics totals like a main widget on top that will help us.
+

@@ -1,0 +1,5 @@
+data_studio_mag_dashboard=https://datastudio.google.com/u/0/reporting/6c4e6a3a-a1b7-4a06-a5c5-34e9423155f8/page/p_f4tfatuj5d
+dashboard_screenshot="C:\Users\Cloverly\claude_code\google_ads_leads_tracking\Screenshot 2026-10-05 075513.png"
+
+## objectives:
+1. figure out the links of: click_to_call, email_link_clicks, Form_submission_thankyou_1

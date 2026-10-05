@@ -1,0 +1,15 @@
+The opt-in event fires on your main site, not on ac-page.com:
+- free_gifts_opt_ins is recorded at https://myadventuregroup.com.au/free-gift-delivery-page/ (635 events, split across the www and non-www host).
+- GA4 is only installed on myadventuregroup.com.au — the only hostnames in the property are www.myadventuregroup.com.au and myadventuregroup.com.au. GA4 is not running on the ac-page.com pages at all.
+
+So what actually happened for those contacts:
+1. The person lands on an ActiveCampaign-hosted landing page at https://myadventuregroup.ac-page.com/<some-slug> (a "free gift" opt-in page).
+2. They fill it out and submit → AC creates the contact (that's the okhttp server-side relay we saw).
+3. AC redirects them to myadventuregroup.com.au/free-gift-delivery-page/ to collect the gift.
+4. GA4 fires the free_gifts_opt_ins event on that delivery page, and because the visitor arrived from the AC page, it stamps the session source as myadventuregroup.ac-page.com / referral.
+
+So "the contact filled out and submitted that form" = yes, correct. The ac-page.com source is the opt-in landing page they submitted.
+
+The one thing I can't give you from GA4: the exact ac-page.com/<slug> URL. Because GA4 isn't on those pages, it only ever sees ac-page.com as a referrer — never the specific page path (that's why my page-path lookup returned nothing for that host). The exact landing-page link lives in ActiveCampaign → Pages (the Pages/landing-page builder).
+
+Want me to pull the list of your AC landing pages (and their live ac-page.com URLs) via the ActiveCampaign API so you can see the exact link(s)? I can check whether they're exposed through the API and list them if so.

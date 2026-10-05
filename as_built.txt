@@ -27,6 +27,18 @@ SCRIPTS (this repo)
   token. Requires: a Desktop OAuth client JSON (secrets/oauth_client.json).
 - scripts/google_ads_pull.py — Google Ads campaign + gclid pull (not yet used;
   needs a developer token). Requires: secrets/google-ads.yaml, GADS_CUSTOMER_ID.
+- scripts/map_ga4_ac.py (+ scripts/match_ga4_ac.sql) — LEAD MAPPING. Pulls GA4 form
+  events (minute buckets, Sydney->UTC) + Calendly bookings (email + UTM), loads them
+  into Supabase staging, then runs match_ga4_ac.sql to rebuild two output tables.
+  Calendly matches AC by EMAIL (reliable). GA4 matches AC by TIMESTAMP within a
+  tolerance window (default +/-300s), excluding bulk-import bursts (>2 contacts/min);
+  every GA4 match is confidence-scored (high/medium/low). Args: --days (default 60,
+  bounded by GA4 ~2mo minute-data retention), --tolerance-seconds, --events,
+  --dump PATH (fetch-only JSON, no DB). Requires: GA4_PROPERTY_ID + GA4 key vars,
+  CALENDLY_API_TOKEN or CALENDLY_API_TOKEN_FILE, SUPABASE_DB_URL (direct Postgres).
+  NOTE: AC contacts are created via a server-side relay (ua=okhttp) / imports, not the
+  browser GA4 tracked, so ~50% of non-bulk contacts align to a GA4 form event within a
+  few minutes; the rest stay low-confidence/unmatched. Calendly-by-email is exact.
 
 EXTERNAL INTEGRATIONS
 - Google Analytics 4 Data API — read via a Google Cloud service account
@@ -46,6 +58,15 @@ DATA STORES
   question: id, prompt, status (pending|processing|done|error), result (markdown),
   error, requested_by, created_at, updated_at. Migration mirrored at
   (dashboard repo) supabase/migrations/20261002010000_create_ga4_agent_requests.sql.
+- public.ga4_ac_contact_source (Supabase MAGTestProject) — per-AC-contact inferred
+  acquisition source (the lead-mapping deliverable). PK contact_id; cols source,
+  medium, campaign, match_method (calendly_email|ga4_time|unmatched), confidence,
+  candidate_count, matched_at, time_delta_seconds. Rebuilt by scripts/map_ga4_ac.py.
+- public.ga4_ac_event_matches — audit: one row per GA4 form minute-bucket / Calendly
+  booking with the contact it tied to. Plus staging ga4_events_staging /
+  calendly_bookings_staging (truncated + reloaded each run). Migration applied via
+  Supabase MCP (create_ga4_ac_mapping); DDL kept at scripts/match_ga4_ac.sql is the
+  matching logic, not the DDL.
 
 AUTOMATIONS / ROUTINES
 - "GA4 On-Demand Report" Claude cloud routine (trigger id
