@@ -1,0 +1,112 @@
+HOW THE DASHBOARD DERIVES "T1 ENQUIRIES BY CHANNEL"
+===================================================
+Date: 2026-10-05
+GA4 property: 363754280 (myadventuregroup.com.au)
+Window analysed: last 30 days
+Source dashboard: data_studio MAG dashboard
+  https://datastudio.google.com/u/0/reporting/6c4e6a3a-a1b7-4a06-a5c5-34e9423155f8/page/p_f4tfatuj5d
+
+OBJECTIVE
+---------
+Figure out how the dashboard produces the "Total T1 Enquiries by Channel" figures
+(google/cpc=7, bing/cpc=6, ... grand total 27).
+
+CAN THE REPORT ITSELF BE READ PROGRAMMATICALLY? NO.
+---------------------------------------------------
+There is no Looker Studio (Data Studio) API/MCP connector, and the report is
+Google-auth-gated. A plain fetch of the report URL returns only the empty app shell
+(title "MAG Dashboard"); the real data loads via Google's authenticated internal APIs.
+So the report's chart config cannot be read directly. INSTEAD, the recipe was
+reverse-engineered against the SAME GA4 data source the report sits on, until it
+reproduced the published numbers to the unit.
+
+THE RECIPE (reproduces the dashboard EXACTLY)
+---------------------------------------------
+- Data source : GA4 property 363754280
+- "T1 Enquiries" metric : the 4 key events, summed --
+      calendly_form_submit + click_to_call + email_link_clicks + Form_submission_thankyou_1
+  (eventCount, conversions, and keyEvents ALL return 27 identically -- these are key
+   events, so the three metrics coincide.)
+- "By channel" dimension : SESSION source / SESSION medium  (session-scoped = last-click)
+- Date range : last 30 days
+
+Exact match (metric=eventCount|conversions|keyEvents, dims=sessionSource/sessionMedium):
+     google / cpc                        = 7
+     bing / cpc                          = 6
+     google / organic                    = 6
+     (direct) / (none)                   = 2
+     ads.google.com / referral           = 2
+     tagassistant.google.com / referral  = 2
+     linkedin.com / referral             = 1
+     youtube / video                     = 1
+     Grand total                         = 27
+
+IT IS SESSION SOURCE/MEDIUM, NOT FIRST-USER
+-------------------------------------------
+Re-running the same 4 events with FIRST-USER source/medium gives a DIFFERENT split
+(bing/cpc 5 not 6, google/organic 2 not 6, an extra mail.google.com/referral=3, etc.).
+Because the dashboard matches SESSION and not first-user, it uses session (last-click)
+attribution, not acquisition/first-touch.
+
+THE TWO HEADER TILES, FROM THE SAME 27
+--------------------------------------
+Grouping the same 27 by sessionDefaultChannelGroup:
+     Cross-network   = 7
+     Organic Search  = 6
+     Paid Search     = 6
+     Referral        = 4
+     Direct          = 2
+     Organic Social  = 1
+     Organic Video   = 1
+  * "Total T1 Enquiries = 27"      = all channel groups.
+  * "From Marketing Channels = 19" = Cross-network 7 + Paid Search 6 + Organic Search 6
+                                     (excludes Direct, Referral, Organic Social, Organic Video).
+
+IMPLICATION FOR AC-CONTACT MAPPING
+----------------------------------
+The channel figure is a GA4 SESSION-attribution count on 4 key events; it is
+independent of contact identity. That is why only the calendly_form_submit + form
+subset could be tied back to ActiveCampaign contacts -- click_to_call / email_link_clicks
+(12 of 27) are anonymous and create no contact. See the t1_enquiry_channels /
+t1_enquiry_contacts Supabase tables and scripts/map_t1_enquiries.py.
+
+T1 ENQUIRIES BY CAMPAIGN (GA4, last 30 days)
+--------------------------------------------
+sessionSource/sessionMedium x sessionCampaignName x eventName (metric eventCount):
+  google/organic   | (organic)                               = 6  (calendly 5, form 1)
+  google/cpc       | Demand Gen                              = 5  (click_to_call 5)
+  bing/cpc         | PMax: Brand                             = 4  (calendly 3, click_to_call 1)
+  (direct)/(none)  | (direct)                                = 2  (calendly 2)
+  ads.google.com/referral        | (referral)               = 2  (click_to_call 1, email_link 1)
+  tagassistant.google.com/referral | (referral)             = 2  (click_to_call 1, email_link 1)
+  bing/cpc         | PMax: Keynote                           = 1  (calendly 1)
+  bing/cpc         | PMax: Teambuilding Outdoor (2025 Assets)= 1  (calendly 1)
+  google/cpc       | PMax: Keynote                           = 1  (form 1)
+  google/cpc       | PMax: Teambuilding Outdoor (2024 Assets)= 1  (click_to_call 1)
+  linkedin.com/referral | (referral)                         = 1  (calendly 1)
+  youtube/video    | yelp2026                                = 1  (email_link 1)
+  Total = 27
+Read: the 7 GOOGLE/CPC enquiries = Demand Gen 5 (all phone clicks) + PMax Keynote 1
+(form) + PMax Teambuilding-2024 1 (call) -> 6 anonymous clicks + 1 form, so NONE tie to
+an AC contact. The bing/cpc 6 are MICROSOFT Ads (not Google Ads).
+
+GOOGLE ADS API STATUS (parked 2026-10-05)
+-----------------------------------------
+Customer ID 402-451-5888 (MyAdventure Group), set in .env GADS_CUSTOMER_ID=4024515888.
+BLOCKED: the owner login james@myadventuregroup.com.au has only BILLING access, and
+there is no manager (MCC) account under it. API Center (dev token) needs ADMIN + a
+manager account -- likely held by the PMax agency. Decision: rely on GA4 for the channel
+question; revisit the Ads API only for cost-per-lead or gclid per-deal attribution.
+Scripts are ready (scripts/google_ads_auth.py + google_ads_pull.py, google-ads lib 33.0.0).
+
+METHOD / HOW TO RE-RUN
+----------------------
+Queried the GA4 Data API (BetaAnalyticsDataClient), eventName in the 4 T1 events,
+30daysAgo..today, trying (metric x channel-dimension) combinations:
+  A sessionSource/sessionMedium x eventCount   -> 27  (MATCH)
+  B sessionSource/sessionMedium x conversions  -> 27  (MATCH)
+  C sessionSource/sessionMedium x keyEvents    -> 27  (MATCH)
+  D sessionDefaultChannelGroup x eventCount    -> 27  (the channel-group / tile view)
+  E firstUserSource/firstUserMedium x eventCount -> 27 total but DIFFERENT split (reject)
+Auth: service account service_account_json_key_claudegwscli-502400-3a7969b176ed.json
+(Viewer on GA4), same pattern as scripts/ga4_pull.py.

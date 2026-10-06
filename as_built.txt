@@ -1,94 +1,111 @@
 ================================================================================
 AS-BUILT — google_ads_leads_tracking
-Last updated: 2026-10-02
+Last updated: 2026-10-06
 ================================================================================
 
 PURPOSE
-Answer "which leads/deals come from Google Ads" from data, and power the
-self-service "MAG GA4 Agent" tab on the MAG dashboard. GA4 gives aggregate
-Google Ads volume; per-deal attribution would require a gclid captured into
+Answer "which leads/deals come from Google Ads" from data, power the self-service
+"MAG GA4 Agent" tab, and feed the dashboard's "Lead Source Tracking" tab with a
+per-AC-contact channel + conversion-action mapping. GA4 gives aggregate Google Ads
+volume; reliable per-lead attribution would require a gclid captured into
 ActiveCampaign (none exists today).
 
 SCRIPTS (this repo)
-- scripts/ga4_routine.py — cloud-friendly GA4 pull. Reads the service-account key
-  from env var GA4_SA_JSON_B64 (base64) or GA4_SA_JSON_CONTENT (raw JSON) or
-  GA4_SA_JSON (file path). Args: --days, --google-ads-only, --limit. Prints a
-  markdown table (source/medium/campaign × sessions/conversions/users). This is
-  the script the cloud routine runs.
-  Requires: GA4_PROPERTY_ID + one of the key vars (in the routine's cloud env;
-  locally in .env).
-- scripts/ga4_pull.py — local GA4 report (reads key file GA4_SA_JSON); writes
-  output/ga4_source_medium_{30,90}d.csv. Requires: GA4_PROPERTY_ID, GA4_SA_JSON.
-- scripts/ac_check_lead_source.py — one-off audit: pulls all AC deals + the
-  Lead-Machine source / lead-source fields, reports whether Google Ads is
-  identifiable per deal (verdict 2026-10-02: no). Requires: AC_API_URL,
-  AC_API_TOKEN. Writes output/ac_lead_source_*.csv.
-- scripts/google_ads_auth.py — one-time OAuth to mint a Google Ads API refresh
-  token. Requires: a Desktop OAuth client JSON (secrets/oauth_client.json).
-- scripts/google_ads_pull.py — Google Ads campaign + gclid pull (not yet used;
-  needs a developer token). Requires: secrets/google-ads.yaml, GADS_CUSTOMER_ID.
-- scripts/map_ga4_ac.py (+ scripts/match_ga4_ac.sql) — LEAD MAPPING. Pulls GA4 form
-  events (minute buckets, Sydney->UTC) + Calendly bookings (email + UTM), loads them
-  into Supabase staging, then runs match_ga4_ac.sql to rebuild two output tables.
-  Calendly matches AC by EMAIL (reliable). GA4 matches AC by TIMESTAMP within a
-  tolerance window (default +/-300s), excluding bulk-import bursts (>2 contacts/min);
-  every GA4 match is confidence-scored (high/medium/low). Args: --days (default 60,
-  bounded by GA4 ~2mo minute-data retention), --tolerance-seconds, --events,
-  --dump PATH (fetch-only JSON, no DB). Requires: GA4_PROPERTY_ID + GA4 key vars,
-  CALENDLY_API_TOKEN or CALENDLY_API_TOKEN_FILE, SUPABASE_DB_URL (direct Postgres).
-  NOTE: AC contacts are created via a server-side relay (ua=okhttp) / imports, not the
-  browser GA4 tracked, so ~50% of non-bulk contacts align to a GA4 form event within a
-  few minutes; the rest stay low-confidence/unmatched. Calendly-by-email is exact.
+- scripts/ga4_routine.py — cloud-friendly GA4 pull. Key from env GA4_SA_JSON_B64
+  (base64) | GA4_SA_JSON_CONTENT (raw) | GA4_SA_JSON (path). Args --days,
+  --google-ads-only, --limit. Prints a markdown table. Run by the cloud routine.
+  Requires: GA4_PROPERTY_ID + a key var.
+- scripts/ga4_pull.py — local GA4 report → output/ga4_source_medium_{30,90}d.csv.
+  Requires: GA4_PROPERTY_ID, GA4_SA_JSON.
+- scripts/ac_check_lead_source.py — one-off AC audit (verdict 2026-10-02: Google Ads
+  not identifiable per deal). Requires: AC_API_URL, AC_API_TOKEN.
+- scripts/google_ads_auth.py — one-time OAuth to mint a Google Ads refresh token.
+  Requires a Desktop OAuth client JSON (secrets/oauth_client.json — not present yet).
+- scripts/google_ads_pull.py — Google Ads campaign + gclid pull (NOT usable yet;
+  needs a developer token + admin access). Requires secrets/google-ads.yaml,
+  GADS_CUSTOMER_ID.
+- scripts/map_ga4_ac.py (+ scripts/match_ga4_ac.sql) — LEAD MAPPING (60-day general
+  cache). Pulls GA4 form events (minute buckets, Sydney->UTC) + Calendly bookings,
+  loads Supabase staging, runs match_ga4_ac.sql to rebuild ga4_ac_contact_source +
+  ga4_ac_event_matches. Calendly→AC by EMAIL (exact); GA4→AC by TIMESTAMP (+/-300s,
+  bulk bursts >2/min excluded), confidence-scored. Args --days (default 60),
+  --tolerance-seconds, --events, --dump. Requires: GA4 key vars, CALENDLY token,
+  SUPABASE_DB_URL (but see NOTE — currently blank; written via Supabase MCP instead).
+- scripts/map_t1_enquiries.py (+ scripts/match_t1_ac.sql) — T1-SCOPED mapping.
+  Reproduces the Data Studio "27 T1 Enquiries by channel" (last 30 days) from the 4
+  T1 events (calendly_form_submit, click_to_call, email_link_clicks,
+  Form_submission_thankyou_1) and maps them to AC contacts. Calendly channel is taken
+  from the GA4 calendly_form_submit session source/medium (time-joined). Writes
+  public.t1_enquiry_channels + public.t1_enquiry_contacts. click_to_call /
+  email_link_clicks are anonymous (no contact). Args --days (default 30),
+  --tolerance-seconds, --dump.
+- scripts/ad_search_source.py — derives the GA4 session channel for CALENDLY contacts
+  (by timestamp-joining bookings to GA4 calendly_form_submit events) and emits
+  email->channel JSON, used to fill ga4_ac_contact_source.channel for calendly rows.
+  Args --days (default 60), --out.
 
 EXTERNAL INTEGRATIONS
-- Google Analytics 4 Data API — read via a Google Cloud service account
-  (project claudegwscli-502400, SA insta-drive-uploader@claudegwscli-502400.iam.gserviceaccount.com,
-  Viewer on GA4 property 363754280). Key file lives in the repo root
-  (service_account_json_key_*.json) and is GITIGNORED; base64 of it is set as an
-  env var on the routine's cloud environment.
+- Google Analytics 4 Data API — read via GCP service account (project
+  claudegwscli-502400, SA insta-drive-uploader@…, Viewer on GA4 property 363754280).
+  Key file in repo root (service_account_json_key_*.json), GITIGNORED; base64 set as
+  an env var on the cloud routine.
 - ActiveCampaign — REST API v3 at https://myadventuregroup.api-us1.com (account
-  2116665). Token in .env (AC_API_TOKEN), gitignored. Read-only use here.
-- Google Ads API — scaffolded only; needs a developer token (pending).
-- Supabase (project aivitcomiywiysrfwqxt, "MAGTestProject") — the hand-off store
-  for the GA4 Agent (see DATA STORES). Accessed by the routine via Supabase MCP
-  execute_sql; by the dashboard via its SUPABASE_DB_URL (pg).
+  2116665). Token in .env (gitignored). AC contacts also mirrored into Supabase.
+- Calendly — API v2 (https://api.calendly.com); personal access token in
+  calendly_personal_access_token.txt (gitignored), path in CALENDLY_API_TOKEN_FILE.
+- Google Ads API — SCAFFOLDED, BLOCKED. Customer ID 402-451-5888
+  (GADS_CUSTOMER_ID=4024515888 in .env). Blocked: the owner login has Billing-only
+  access and there is no manager (MCC) account, so API Center / developer token can't
+  be reached. Needs Admin access + a manager account + a Basic-access dev token.
+  google-ads lib installed; no secrets/google-ads.yaml or oauth_client.json yet.
+- Supabase (project aivitcomiywiysrfwqxt, "MAGTestProject") — hand-off store for the
+  GA4 Agent + the lead-mapping tables. Written via Supabase MCP execute_sql (the
+  direct SUPABASE_DB_URL does not connect from this Windows box); read by the
+  dashboard via its own SUPABASE_DB_URL.
 
-DATA STORES
-- public.ga4_agent_requests (Supabase MAGTestProject) — one row per GA4 Agent
-  question: id, prompt, status (pending|processing|done|error), result (markdown),
-  error, requested_by, created_at, updated_at. Migration mirrored at
-  (dashboard repo) supabase/migrations/20261002010000_create_ga4_agent_requests.sql.
-- public.ga4_ac_contact_source (Supabase MAGTestProject) — per-AC-contact inferred
-  acquisition source (the lead-mapping deliverable). PK contact_id; cols source,
-  medium, campaign, match_method (calendly_email|ga4_time|unmatched), confidence,
-  candidate_count, matched_at, time_delta_seconds. Rebuilt by scripts/map_ga4_ac.py.
-- public.ga4_ac_event_matches — audit: one row per GA4 form minute-bucket / Calendly
-  booking with the contact it tied to. Plus staging ga4_events_staging /
-  calendly_bookings_staging (truncated + reloaded each run). Migration applied via
-  Supabase MCP (create_ga4_ac_mapping); DDL kept at scripts/match_ga4_ac.sql is the
-  matching logic, not the DDL.
+DATA STORES (Supabase MAGTestProject)
+- public.ga4_agent_requests — one row per GA4 Agent question (id, prompt, status,
+  result markdown, …). Migration mirrored in the dashboard repo.
+- public.ga4_ac_contact_source — per-AC-contact inferred source (the lead-mapping
+  deliverable; backs the dashboard's Lead Source Tracking tab). PK contact_id; cols
+  source, medium, campaign, match_method (calendly_email|ga4_time|unmatched),
+  confidence, candidate_count, matched_at, time_delta_seconds, and **channel** (the
+  full GA4 source/medium, incl. for calendly rows; populated OUT-OF-BAND — see
+  CLAUDE.md gotcha; was briefly named ad_search_source). Rebuilt by map_ga4_ac.py.
+- public.ga4_ac_event_matches — audit: one row per GA4 form bucket / Calendly booking
+  with the contact it tied to. Plus staging ga4_events_staging /
+  calendly_bookings_staging (truncated + reloaded each run; shared by both mappers).
+- public.t1_enquiry_channels — per-channel rollup of the 27 T1 enquiries (ga4_total,
+  per-event counts, ac_contacts_matched, unmappable_count). Built by map_t1_enquiries.
+- public.t1_enquiry_contacts — one row per identified T1 lead×channel (channel_source,
+  channel_medium, conversion_action, match_method, confidence, …).
+  Migrations applied via Supabase MCP: create_ga4_ac_mapping, create_t1_enquiry_mapping.
 
 AUTOMATIONS / ROUTINES
-- "GA4 On-Demand Report" Claude cloud routine (trigger id
-  trig_01DFkHgvzKJUDCNcHwM87gyS, owner Yen; cloud env env_01DYHNjMesGeuq9ABo7W6m6f;
-  clones github.com/yen93/google_ads_leads_tracking). On fire: claims the oldest
-  pending public.ga4_agent_requests row, runs scripts/ga4_routine.py per the
-  prompt, writes the markdown result back and marks it done. Triggered on demand
-  via its /fire endpoint (NOT on a schedule). allowed_tools include
-  mcp__Supabase__execute_sql. The fire URL + token are in a gitignored local file
-  "GA4 On-Demand Report routine API Key and URL.txt" and are also set as Cloud Run
-  env vars on the dashboard service. IMPORTANT: edit this routine only via the
-  RemoteTrigger API — saving it in the claude.ai UI reverts the worker prompt.
+- "GA4 On-Demand Report" Claude cloud routine (trig_01DFkHgvzKJUDCNcHwM87gyS, owner
+  Yen; cloud env env_01DYHNjMesGeuq9ABo7W6m6f; clones github.com/yen93/…). On fire:
+  claims oldest pending ga4_agent_requests row, runs ga4_routine.py, writes the
+  markdown result, marks done. On-demand via /fire (not scheduled). allowed_tools
+  include mcp__Supabase__execute_sql. Fire URL+token in a gitignored local file and
+  as Cloud Run env vars. Edit ONLY via the RemoteTrigger API (the claude.ai UI reverts it).
 
-RELATED (lives in the sibling dashboard repo C:/Users/Cloverly/claude_code/dashboard)
-- "MAG GA4 Agent" tab: public/ga4_agent.html + server/ga4Agent.js (routes
-  /api/ga4-agent/run and /result) + config.js ga4Agent{fireUrl,fireToken}.
-  Deployed to Cloud Run service "dashboard" (project claudegwscli-502400, region
-  australia-southeast1). Env vars GA4_ROUTINE_FIRE_URL + GA4_ROUTINE_FIRE_TOKEN
-  (secret) added alongside the existing dashboard vars.
+RELATED (sibling dashboard repo C:/Users/Cloverly/claude_code/dashboard; separate repo,
+user deploys/commits it — Cloud Run service "dashboard", australia-southeast1)
+- "MAG GA4 Agent" tab: public/ga4_agent.html + server/ga4Agent.js.
+- "Lead Source Tracking" tab (renamed this session from "AC Contact Sources"):
+  public/ac_contact_sources.html (file name kept) + server/metrics/ac-contact-sources.js
+  (route /api/operations/contact-sources). Reads public.ga4_ac_contact_source; shows
+  Channel + Conversion Action columns with hover tooltips; KPI cards per marketing
+  channel. public/lead_source_guide.html — the in-app guide the tooltips link to.
 
 OTHER
+- data_studio/ — findings: event_links_findings.txt (conversion-event page links),
+  channel_breakdown_findings.txt (how the dashboard's "27 T1 Enquiries by channel" is
+  computed: GA4 session source/medium × the 4 T1 events, last 30d).
+- lead-source-tracking.html (+ lst-fig1-dataflow.png, lst-fig2-matching.png) —
+  self-contained iMAG-themed end-user guide for the Lead Source Tracking system.
 - mag-ga4-agent-guide.html (+ ga4-agent-architecture.png, ga4-agent-usage.png) —
-  self-contained iMAG-themed end-user guide for the GA4 Agent.
-- .venv/ — local Python 3.14 virtualenv. requirements.txt pins the GA4/Ads libs.
+  iMAG end-user guide for the GA4 Agent.
+- .venv/ — Python 3.14 venv. requirements.txt pins GA4/Ads libs; also needs
+  psycopg[binary] (Supabase writes) and pillow (diagram rendering).
 ================================================================================

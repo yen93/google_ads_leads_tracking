@@ -1,0 +1,9 @@
+google / cpc = 7
+bing / cpc = 6
+google / organic = 6
+(direct) / (none) = 2
+ads.google.com / referral = 2
+tagassistant.google.com / referral = 2
+linkedin.com / referral = 1
+youtube / video = 1
+Grand total = 27

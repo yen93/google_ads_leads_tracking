@@ -1,0 +1,5 @@
+## Map GA4 and AC contacts by timestamp:
+Google Analytics (GA4) records every form submit and Calendly booking with a date, time and source, such as google/cpc or bing/cpc. match each one to its ActiveCampaign contact by time.
+
+## output:
+create a supabase table with mapped data

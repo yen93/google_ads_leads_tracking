@@ -1,0 +1,5 @@
+breakdown_by_channel="C:\Users\Cloverly\claude_code\google_ads_leads_tracking\data_studio - Breakdown by Channel.txt"
+data_studio_dashboard=https://datastudio.google.com/u/0/reporting/6c4e6a3a-a1b7-4a06-a5c5-34e9423155f8/page/p_f4tfatuj5d
+
+## Objectives:
+1. I need to figure out which active campaign contacts can be mapped to these "Total T1 Enquiries by Channel" figures by channel

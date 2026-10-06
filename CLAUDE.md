@@ -1,9 +1,11 @@
 # CLAUDE.md — google_ads_leads_tracking
 
 ## What this is
-Two things: (1) scripts to read GA4 / Google Ads / ActiveCampaign for lead-source
-analysis, and (2) the backend worker for the **MAG GA4 Agent** — a dashboard tab
-where staff ask a plain-English GA4/Google Ads question and get a live table.
+Three things: (1) scripts to read GA4 / Google Ads / ActiveCampaign for lead-source
+analysis, (2) the backend worker for the **MAG GA4 Agent** — a dashboard tab
+where staff ask a plain-English GA4/Google Ads question and get a live table, and
+(3) the **lead-source mapping** that powers the dashboard's **Lead Source Tracking**
+tab (per-AC-contact channel + conversion action).
 
 Core finding (don't re-litigate): per-deal "which deal came from Google Ads"
 attribution is **not possible from current data** — AC stores no `gclid`/`utm`
@@ -38,6 +40,23 @@ writes the markdown result back (`done`) via Supabase MCP → tab polls
 `GET /api/ga4-agent/result?id=` until done. Mirrors the dashboard's existing
 "routine writes a Supabase table, dashboard reads it" pattern (sales-topline-sync).
 
+## Lead source mapping (GA4/Calendly → AC → "Lead Source Tracking" tab)
+- `scripts/map_ga4_ac.py` (+ `match_ga4_ac.sql`) builds the 60-day per-contact source
+  cache `public.ga4_ac_contact_source`: Calendly→AC by **email** (exact), GA4 form
+  events→AC by **timestamp** (±300s, confidence-scored high/medium/low).
+- `scripts/map_t1_enquiries.py` (+ `match_t1_ac.sql`) is a T1-scoped variant that
+  reproduces the Data Studio "27 T1 Enquiries by channel" (the 4 T1 events, last 30d)
+  into `public.t1_enquiry_channels` / `t1_enquiry_contacts`. `click_to_call` /
+  `email_link_clicks` are anonymous (no contact) — only form + Calendly leads map.
+- The dashboard's **Lead Source Tracking** tab (sibling repo; file still
+  `public/ac_contact_sources.html`, was "AC Contact Sources") reads
+  `ga4_ac_contact_source` and shows a **Channel** + **Conversion Action** column with
+  tooltips linking to `public/lead_source_guide.html`. The `channel` column is the full
+  GA4 source/medium per contact; for Calendly rows it's derived from the GA4
+  `calendly_form_submit` session via `scripts/ad_search_source.py`.
+- How the dashboard's "by channel" figures are derived: GA4 session source/medium ×
+  the 4 T1 events, last 30d (documented in `data_studio/channel_breakdown_findings.txt`).
+
 ## GOTCHAS (these bit us — read before touching the GA4 Agent)
 - **NEVER edit the routine in the claude.ai UI.** Saving it there reverts the
   worker prompt to the original and drops `mcp__Supabase__execute_sql` from
@@ -56,6 +75,19 @@ writes the markdown result back (`done`) via Supabase MCP → tab polls
 - Cloud Run env vars: add with `gcloud run services update … --update-env-vars`
   (ADDITIVE); never `--set-env-vars` (it wipes the other vars). Deploy code with
   `gcloud run deploy dashboard --source . --region australia-southeast1`.
+
+## GOTCHAS (lead source mapping)
+- **`SUPABASE_DB_URL` is blank in `.env` and the direct Postgres URL won't connect from
+  this box.** Run the mappers with `--dump out/x.json` to fetch, then load staging +
+  run the match SQL via the **Supabase MCP** (`mcp__Supabase__execute_sql`) — not psycopg.
+- **`ga4_ac_contact_source.channel` and the T1 tables are populated OUT-OF-BAND via MCP.**
+  Re-running `map_ga4_ac.py` rebuilds `ga4_ac_contact_source` and NULLs `channel` →
+  re-enrich: UPDATE `ga4_time` rows' channel from source/medium, run
+  `scripts/ad_search_source.py`, UPDATE `calendly_email` rows from its JSON. (TODO: fold
+  into `match_ga4_ac.sql`.)
+- GA4 minute-grain data has ~2-month retention — keep `--days` ≤ ~60.
+- Google Ads API is still blocked: customer id 402-451-5888 (`GADS_CUSTOMER_ID` set in
+  `.env`) but the owner login is Billing-only with no manager account, so no dev token.
 
 ## Secrets — never commit (all gitignored)
 `service_account_json_key_*.json`, `.env`, `secrets/`, `google-ads.yaml`, and
